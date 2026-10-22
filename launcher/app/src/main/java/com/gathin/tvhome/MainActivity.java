@@ -119,6 +119,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private String vpnApp;
     private float glassTargetX, glassTargetY;
     private boolean glassShown;
+    private final Runnable syncGlassFocus = this::syncGlassToFocusedCard;
     // Static so they survive the activity being destroyed while another app is open (low-memory TVs,
     // or Developer options → "Don't keep activities"); they only reset when the process dies.
     private static int lastFocused = 0;
@@ -417,6 +418,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 if (!glassShown) return;
                 glassTargetY -= dy;
                 glass.animate().cancel();
+                // Cancelling the movement also cancels a just-started alpha reveal.
+                glass.setAlpha(1f);
                 glass.setTranslationX(glassTargetX);
                 glass.setTranslationY(glassTargetY);
             }
@@ -469,12 +472,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         .setDuration(160).start());
             }
         }
+        for (View button : new View[]{btnInputs, btnWifi, btnReorder, btnSettings}) {
+            View.OnFocusChangeListener previous = button.getOnFocusChangeListener();
+            button.setOnFocusChangeListener((view, focused) -> {
+                applyPillFocus((TextView) view, focused);
+                if (previous != null) previous.onFocusChange(view, focused);
+            });
+        }
         if (festive) applyFestiveSkin((TextView) btnInputs, (TextView) btnSettings);
 
         // Hide the glass when focus leaves the tiles.
         getWindow().getDecorView().getViewTreeObserver().addOnGlobalFocusChangeListener((oldF, newF) -> {
             boolean onTile = newF != null && newF.getId() == R.id.card;
-            if (!onTile) hideGlass();
+            if (onTile) scheduleGlassSync();
+            else hideGlass();
         });
 
         packageFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
@@ -549,6 +560,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             reloadApps(true);
         }
         rebuildOnResume = false;
+        scheduleGlassSync();
         updateGreeting();
         updateWifiLabel();
         updateInputsButton();
@@ -647,6 +659,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onPause() {
         idleClock.pause();
+        grid.removeCallbacks(syncGlassFocus);
         super.onPause();
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
@@ -676,6 +689,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (idleClock != null) idleClock.reset();
         if (hasFocus) {
             if (libraryFocusPending && appLibrary == null) focusLibrary();
+            scheduleGlassSync();
             showCardPrompt();
         }
     }
@@ -1005,6 +1019,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public void onTileFocused(int position, View card) {
+        if (card.getWidth() == 0 || card.getHeight() == 0) {
+            scheduleGlassSync();
+            return;
+        }
         lastFocused = position;
         lastFocusedKey = adapter.keyAt(position);
         // Tile rect in root coordinates, using layout positions (ignores the scale animation).
@@ -1035,6 +1053,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             else glass.setAlpha(1f);
             glassShown = true;
         } else if (!animations || reducedMotion) {
+            glass.setAlpha(1f);
             glass.setTranslationX(x);
             glass.setTranslationY(y);
         } else {
@@ -1195,6 +1214,23 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             heroName.setAlpha(0f);
             ambient.setAlpha(0f);
         }
+    }
+
+    private void scheduleGlassSync() {
+        if (grid == null) return;
+        grid.removeCallbacks(syncGlassFocus);
+        grid.post(syncGlassFocus);
+    }
+
+    private void syncGlassToFocusedCard() {
+        if (!hasWindowFocus() || openPopup != null || appLibrary != null) return;
+        View card = grid.findFocus();
+        if (card == null || card.getId() != R.id.card
+                || card.getWidth() == 0 || card.getHeight() == 0) return;
+        RecyclerView.ViewHolder holder = grid.findContainingViewHolder(card);
+        if (holder == null) return;
+        int position = holder.getBindingAdapterPosition();
+        if (position != RecyclerView.NO_POSITION) onTileFocused(position, card);
     }
 
     private void hideGlass() {
@@ -1646,10 +1682,27 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private static void setHeaderIcon(TextView pill, Drawable icon) {
         if (icon != null) {
+            icon = icon.mutate();
             int size = Math.round(22f * pill.getResources().getDisplayMetrics().density);
             icon.setBounds(0, 0, size, size);
         }
+        pill.setCompoundDrawableTintList(null);
         pill.setCompoundDrawablesRelative(icon, null, null, null);
+        applyPillFocus(pill, pill.isFocused());
+    }
+
+    static void applyPillFocus(TextView pill, boolean focused) {
+        // Android 6 may ignore XML compound tint and update drawable states after the
+        // focus callback. Use the focus event directly and keep festival artwork coloured.
+        int colour = focused ? 0xFF111111 : 0xFFFFFFFF;
+        pill.setTextColor(colour);
+        pill.setCompoundDrawableTintList(null);
+        for (Drawable icon : pill.getCompoundDrawablesRelative()) {
+            if (icon != null && !(icon instanceof BellDrawable)
+                    && !(icon instanceof DiyaDrawable) && !(icon instanceof MarigoldDrawable)) {
+                icon.mutate().setColorFilter(colour, android.graphics.PorterDuff.Mode.SRC_IN);
+            }
+        }
     }
 
     /** Runs {@code action} when the view gains focus, keeping any focus listener it already had. */
