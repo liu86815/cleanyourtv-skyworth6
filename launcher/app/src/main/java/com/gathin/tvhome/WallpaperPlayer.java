@@ -36,7 +36,8 @@ final class WallpaperPlayer {
 
     WallpaperPlayer(Context context, FrameLayout root, Config config) {
         this.root = root;
-        files = new ArrayList<>(config.wallpapers);
+        files = BingWallpaper.STATIC.equals(BingWallpaper.mode(context))
+                ? new ArrayList<>(config.wallpapers) : new ArrayList<>();
         interval = config.wallpaperRotationMinutes * 60_000L;
         preferences = context.getSharedPreferences("wallpaper_rotation", Context.MODE_PRIVATE);
         DisplayMetrics metrics = context.getResources().getDisplayMetrics();

@@ -1,5 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="background_settings">Change background</string>
+    <string name="clock_settings">Clock screensaver</string>
+    <string name="clock_hint">Starts only while Home is idle. It does not start over a player or TV input. The clock moves every minute. Press a direction, OK or Back to return.</string>
+    <string name="clock_minutes">%1$d minutes</string>
+    <string name="clock_preview">Preview now</string>
+    <string name="background_black">Classic black</string>
+    <string name="background_daily">Bing daily</string>
+    <string name="background_pin">Pin this image</string>
+    <string name="background_fixed">Use pinned image</string>
+    <string name="background_wait">Select Bing daily and wait for the image to load first</string>
+    <string name="background_no_fixed">No pinned image yet</string>
+    <string name="background_hint">Left / right to preview · OK to save · Back to cancel</string>
+    <string name="background_save_failed">Could not save background</string>
+    <string name="shutdown_settings">Daily power off</string>
+    <string name="shutdown_title">Daily power off</string>
+    <string name="shutdown_enabled">Daily power off: %1$s</string>
+    <string name="shutdown_time">Power-off time: %1$02d:%2$02d</string>
+    <string name="shutdown_hint">The TV shows its 60-second warning first. Press Back during the warning to cancel that day.</string>
+    <string name="shutdown_scheduled">Scheduled every day at %1$02d:%2$02d</string>
+    <string-array name="background_names">
+        <item>Aurora blue</item><item>Deep ocean</item><item>Jade</item>
+        <item>Sunset</item><item>Rose</item><item>Obsidian</item>
+    </string-array>
     <string name="app_name">Home</string>
     <string name="inputs">Inputs</string>
     <string name="wifi">Wi-Fi</string>

@@ -1,0 +1,63 @@
+# Skyworth 9S52-H9D (65" H9D), Coocaa 7.95.592, Android 6.0 (API 23)
+# ro.product.model=9S52_H9D, device sky838_9s52, MStar platform
+# ro.build.display.id=full_sky838_9s52-userdebug 6.0 MRA58K test-keys, firmware 7.0.813-008130 (2020-08-13)
+# Historical debloat applied 2026-10-20 over local network ADB. Device address omitted.
+# This is a device-specific record, not an automatic install/uninstall instruction.
+# Current Android 6 launcher adaptation: docs/SKYWORTH-ANDROID6-HANDOFF.zh-CN.md.
+#
+# ROM restrictions discovered on this device (important before reusing this list):
+# - `pm disable-user` / `pm disable-until-used` / `pm hide` all throw SecurityException from shell (uid 2000):
+#   the Coocaa PMS blocks shell from changing component state, regardless of the target package's uid.
+# - `adb root` refuses ("adbd cannot run as root in production builds") despite the userdebug build string.
+# - `pm block` and `pm install-existing` do not exist on this build.
+# - WORKING method: `pm uninstall -k --user 0 <pkg>` (keeps data, system partition untouched).
+#   Restore: `pm install -r --user 0 <system apk path>` (verified working on this device).
+#
+# Launcher: com.tianci.movieplatform (persist.service.homepage.pkg,
+# activity com.coocaa.homepage.vast.HomePageActivity, focused activity com.ccos.cooui.movieplatform.MainActivity).
+# No package on this device declares android.intent.category.HOME, so `am start -a MAIN -c HOME`
+# cannot resolve and launcher replacement via standard means is not possible.
+# System APKs live in /system/app and /system/vendor/app (Sky* directory names, see mapping below).
+# At that early stage only debloating was done. The current branch has since adapted
+# the launcher to API 23; the upstream API 26 minimum no longer applies to this branch.
+#
+# Kept on purpose (user request):
+#   com.tianci.de + com.coocaa.skycast.tool + com.coocaa.miracast (casting)
+#   com.tianci.appstore (third-party app installs)
+#   net.dasoft.myplayer (custom player the user built for their kid, installed via USB)
+#   org.xbmc.kodi (user-installed), com.tencent.qqmusictv, com.tianci.localmedia (USB media)
+#   com.tianci.movieplatform (home screen), com.tianci.setting / com.tianci.system / com.tianci.ipc,
+#   com.coocaa.tvmanager / com.coocaa.remotectrlservice / com.coocaa.factory and all com.android.* / android
+#
+# --- batch 1: ads / telemetry (applied 2026-10-20) ---
+com.tianci.ad                # SkyADService, /system/vendor/app/SkyADService/SkyADService.apk
+com.tianci.push              # SkyPushService, /system/vendor/app/SkyPushService/SkyPushService.apk
+com.tianci.autoinstaller     # SkyAutoInstaller, /system/vendor/app/SkyAutoInstaller/SkyAutoInstaller.apk
+com.coocaa.mall              # SkyCCMall, /system/vendor/app/SkyCCMall/SkyCCMall.apk
+com.jd.smartservice          # /system/app/JDSmartService/JDSmartService.apk
+com.coocaa.sky.ccapi         # SkyPayCenter, /system/vendor/app/SkyPayCenter/SkyPayCenter.apk
+com.coocaa.messageprovider   # MessageBox, /system/vendor/app/MessageBox/MessageBox.apk
+
+# --- batch 2: unused features (applied 2026-10-20) ---
+com.baidu.oases                    # Baidu voice assistant, /system/app/Oases/Oases.apk
+com.tianci.user                    # member account, /system/vendor/app/SkyUserService/SkyUserService.apk
+com.coocaa.app_browser             # /system/vendor/app/SkyAppBrowser/SkyAppBrowser.apk
+com.coocaa.guide                   # first-boot wizard, /system/vendor/app/CoocaaGuide/CoocaaGuide.apk
+com.coocaa.teampresent             # business demo mode (no system original, data-app preinstall)
+com.mstar.bluetooth3dservice       # 3D glasses Bluetooth, /system/app/Bluetooth3DService/Bluetooth3DService.apk
+com.skyworthdigital.stb.dataprovider  # STB data, /system/app/StbDataProvider/StbDataProvider.apk
+com.tianci.taskmanager             # /system/vendor/app/SkyTaskManager/SkyTaskManager.apk
+com.coocaa.os.customerservice      # (no system original, data-app preinstall)
+com.coocaa.iptv                    # IPTV (no system original, data-app preinstall)
+com.skyworth.skymarket             # /system/app/SkyMarketShow/SkyMarketShow.apk
+com.xiaodianshi.tv.yst             # streaming app (no system original, data-app preinstall)
+
+# --- disabled at the factory before this debloat (not ours, left alone) ---
+# com.kuyun.smarttv.coocaatv, com.bajintech.karaok, com.skyworth.smarthome_tv,
+# com.loostone.tuning, com.coocaa.jd.screensaver, com.skyworth.lafite.srtnj.speechserver
+
+# --- observed side effects after both batches (home screen verified via screencap) ---
+# - Home banner area shows "loading..." (content rows below load fine). If it stays stuck,
+#   restore com.tianci.push and/or com.coocaa.sky.ccapi first.
+# - Source list entry "fusion terminal" became "add live TV service" (IPTV/STB data disabled).
+# - Account login state survived disabling com.tianci.user; VIP entitlement is server-side.

@@ -39,9 +39,11 @@ public final class LauncherSettingsActivity extends Activity {
             columnChoices[i].setOnClickListener(v -> {
                 if (columns == value) return;
                 columns = value;
-                choices.edit().putInt("columns", value).apply();
+                // Apply the structural layout choice immediately. Waiting for Back left Home's existing
+                // three-column GridLayoutManager alive when the remote's Home key was used to exit Settings.
+                choices.edit().putInt("columns", value).commit();
                 setResult(RESULT_OK);
-                refresh();
+                finish();
             });
         }
         // Keep the numeric choices increasing in the Hebrew reading direction. Reorder the
@@ -61,6 +63,12 @@ public final class LauncherSettingsActivity extends Activity {
             refresh();
         });
         advancedChoice = findViewById(R.id.advancedChoice);
+        findViewById(R.id.backgroundChoice).setOnClickListener(v -> startActivityForResult(
+                new Intent(this, BackgroundSettingsActivity.class), 410));
+        findViewById(R.id.shutdownChoice).setOnClickListener(v -> startActivity(
+                new Intent(this, ShutdownSettingsActivity.class)));
+        findViewById(R.id.clockChoice).setOnClickListener(v -> startActivityForResult(
+                new Intent(this, ScreensaverSettingsActivity.class), 411));
         advancedChoice.setOnClickListener(v -> {
             if (advancedEffects) {
                 setAdvanced(false);
@@ -99,6 +107,11 @@ public final class LauncherSettingsActivity extends Activity {
         choices.edit().putBoolean("advanced_effects", enabled).apply();
         setResult(RESULT_OK);
         refresh();
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if ((request == 410 || request == 411) && result == RESULT_OK) setResult(RESULT_OK);
     }
 
     private void refresh() {

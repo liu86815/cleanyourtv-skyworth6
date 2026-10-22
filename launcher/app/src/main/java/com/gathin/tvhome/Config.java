@@ -230,6 +230,10 @@ final class Config {
             wallpapers.addAll(WallpaperRotation.images(new File(dir, "wallpapers")));
         }
         if (wallpapers.isEmpty() && wallpaper != null) wallpapers.add(wallpaper);
+        // Explicit choices made on the TV take precedence over a theme's image files.
+        if (BingWallpaper.preferences(ctx).contains(BingWallpaper.MODE)) {
+            wallpaperEnabled = false; wallpaper = null; wallpapers.clear();
+        }
         // A festive skin comes only from a theme; config.xml has no festival.
         Festival festival = json == null ? Festival.NONE : Festival.parse(string(json, "festival", ""),
                 string(json, "festival_until", ""), string(json, "greeting", ""), string(json, "accent_color", ""));

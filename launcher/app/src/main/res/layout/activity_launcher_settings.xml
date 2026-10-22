@@ -42,6 +42,24 @@
         </LinearLayout>
 
         <TextView
+            android:id="@+id/backgroundChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="20dp"
+            android:text="@string/background_settings" />
+
+        <TextView
+            android:id="@+id/clockChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="10dp"
+            android:text="@string/clock_settings" />
+
+        <TextView
+            android:id="@+id/shutdownChoice"
+            style="@style/SettingsRow"
+            android:layout_marginTop="10dp"
+            android:text="@string/shutdown_settings" />
+
+        <TextView
             android:id="@+id/animationsChoice"
             style="@style/SettingsRow"
             android:layout_marginTop="28dp" />

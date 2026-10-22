@@ -15,7 +15,7 @@
         android:importantForAccessibility="no" />
 
     <!-- Ambient glow in the colour of the focused dock app. -->
-    <View
+    <com.gathin.tvhome.AmbientGlowView
         android:id="@+id/ambient"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -197,32 +197,32 @@
 
                 <TextView
                     android:id="@+id/btnSettings"
-                    style="@style/TopButton"
-                    android:text="@string/settings"
+                    style="@style/HeaderButton"
+                    android:contentDescription="@string/launcher_settings"
                     android:drawableStart="@drawable/ic_settings"
                     android:nextFocusDown="@+id/grid" />
 
                 <TextView
                     android:id="@+id/btnReorder"
-                    style="@style/TopButtonIcon"
+                    style="@style/HeaderButtonIcon"
                     android:contentDescription="@string/reorder"
                     android:drawableStart="@drawable/ic_swap_vert"
                     android:nextFocusDown="@+id/grid" />
 
                 <TextView
                     android:id="@+id/btnWifi"
-                    style="@style/TopButton"
+                    style="@style/HeaderButton"
                     android:maxWidth="180dp"
                     android:singleLine="true"
                     android:ellipsize="end"
-                    android:text="@string/wifi"
+                    android:contentDescription="@string/wifi"
                     android:drawableStart="@drawable/ic_wifi"
                     android:nextFocusDown="@+id/grid" />
 
                 <TextView
                     android:id="@+id/btnInputs"
-                    style="@style/TopButton"
-                    android:text="@string/inputs"
+                    style="@style/HeaderButton"
+                    android:contentDescription="@string/inputs"
                     android:drawableStart="@drawable/ic_input"
                     android:nextFocusDown="@+id/grid" />
             </LinearLayout>

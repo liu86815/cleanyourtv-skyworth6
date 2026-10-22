@@ -1,5 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="background_settings">更换背景</string>
+    <string name="clock_settings">时钟屏保</string>
+    <string name="clock_hint">仅在首页闲置时进入，不会在播放器或电视信号界面自动出现。时钟每分钟换一个位置。按方向、确认或返回键即可退出。</string>
+    <string name="clock_minutes">%1$d 分钟</string>
+    <string name="clock_preview">立即预览</string>
+    <string name="background_black">经典黑底</string>
+    <string name="background_daily">必应每日</string>
+    <string name="background_pin">固定这张图片</string>
+    <string name="background_fixed">使用已固定图片</string>
+    <string name="background_wait">请先选择必应每日，等待图片加载完成</string>
+    <string name="background_no_fixed">还没有固定图片，请先固定一张喜欢的壁纸</string>
+    <string name="background_hint">左右切换预览 · 按确认保存 · 按返回取消</string>
+    <string name="background_save_failed">背景保存失败，请重试</string>
+    <string name="shutdown_settings">定时关机</string>
+    <string name="shutdown_title">每日定时关机</string>
+    <string name="shutdown_enabled">每日定时关机：%1$s</string>
+    <string name="shutdown_time">关机时间：%1$02d:%2$02d</string>
+    <string name="shutdown_hint">关机前 60 秒会显示酷开系统提示；当天不想关机时，提示期间按返回即可取消。</string>
+    <string name="shutdown_scheduled">已设为每天 %1$02d:%2$02d 关机</string>
+    <string-array name="background_names">
+        <item>极光蓝紫</item><item>深海蓝</item><item>翡翠绿</item>
+        <item>落日橙</item><item>玫瑰紫</item><item>曜石黑</item>
+    </string-array>
     <string name="app_name">主屏幕</string>
     <string name="inputs">输入源</string>
     <string name="wifi">无线网络</string>

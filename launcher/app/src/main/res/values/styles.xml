@@ -35,6 +35,10 @@
         <item name="android:drawablePadding">0dp</item>
     </style>
 
+    <!-- Normal-size icon-only header; dialog buttons retain their text. -->
+    <style name="HeaderButton" parent="TopButtonIcon" />
+    <style name="HeaderButtonIcon" parent="HeaderButton" />
+
     <style name="SettingsRow">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">52dp</item>

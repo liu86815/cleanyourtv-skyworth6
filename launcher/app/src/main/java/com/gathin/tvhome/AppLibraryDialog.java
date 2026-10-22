@@ -166,6 +166,11 @@ final class AppLibraryDialog {
                 if (!pkg.equals(activity.getPackageName()) && !unique.containsKey(pkg)) unique.put(pkg, info);
             }
         }
+        if (CoocaaCompat.isSkyworth(activity)) for (String pkg : CoocaaCompat.SYSTEM_APPS) {
+            if (unique.containsKey(pkg)) continue;
+            ResolveInfo entry = CoocaaCompat.entry(activity, pkg);
+            if (entry != null) unique.put(pkg, entry);
+        }
         totalApps = unique.size();
         apps = new ArrayList<>(unique.values());
         installTimes.clear();
@@ -426,7 +431,7 @@ final class AppLibraryDialog {
         view.setText(value);
         view.setTextSize(size);
         view.setTextColor(color);
-        view.setTypeface(activity.getResources().getFont(R.font.outfit_medium));
+        view.setTypeface(androidx.core.content.res.ResourcesCompat.getFont(activity, R.font.outfit_medium));
         view.setLetterSpacing(0.01f);
         view.setIncludeFontPadding(false);
         return view;

@@ -1,7 +1,5 @@
 package com.gathin.tvhome;
 
-import android.animation.ArgbEvaluator;
-import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.ActivityNotFoundException;
@@ -51,6 +49,7 @@ import android.view.ViewGroup;
 import android.view.Window;
 import android.view.animation.AnimationUtils;
 import android.view.animation.LayoutAnimationController;
+import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -59,10 +58,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.dynamicanimation.animation.DynamicAnimation;
-import androidx.dynamicanimation.animation.FloatPropertyCompat;
-import androidx.dynamicanimation.animation.SpringAnimation;
-import androidx.dynamicanimation.animation.SpringForce;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -100,11 +95,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private RecyclerView grid;
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
+    private BingWallpaperView bingWallpaper;
+    private HomeIdleClock idleClock;
     private GlassView glass;
     private View ambient;
     private TextView heroName;
     private int ambientColor = -1;
-    private ValueAnimator ambientAnimator;
     private boolean heroShown;
     private boolean animations;
     private boolean advancedEffects;
@@ -121,11 +117,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     /** Optional time-of-day backdrop (config.xml, sky_intensity); 0 keeps it hidden. */
     private SkyView sky;
     private String vpnApp;
-    private SpringAnimation springX, springY;
     private float glassTargetX, glassTargetY;
-    // How far the grid has scrolled the glass. springY works without it, in grid content space, so a
-    // scroll moves the glass in lockstep with its tile instead of becoming a moving spring target.
-    private float glassScrollShift;
     private boolean glassShown;
     // Static so they survive the activity being destroyed while another app is open (low-memory TVs,
     // or Developer options → "Don't keep activities"); they only reset when the process dies.
@@ -237,6 +229,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             updateWifiLabel();
             sky.update();
             wallpaperPlayer.update();
+            if (bingWallpaper != null) bingWallpaper.update();
             handler.postDelayed(this, MINUTE_MS);
         }
     };
@@ -244,7 +237,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Also repair the alarm whenever Home starts. Some older TV firmware does not deliver
+        // MY_PACKAGE_REPLACED reliably to a newly updated launcher.
+        ShutdownScheduler.schedule(this);
+        BootAudioRecovery.onHomeCreated(this);
         setContentView(R.layout.activity_main);
+        idleClock = new HomeIdleClock(this, () -> openPopup == null && appLibrary == null
+                && cardPrompt == null && !reordering);
         density = getResources().getDisplayMetrics().density;
         // config.xml, overlaid by config.json from a pushed theme (see Config and tools/theme.sh).
         Config cfg = Config.load(this);
@@ -271,9 +270,31 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         glass = findViewById(R.id.glass);
         if (festive) glass.setAccent(festival.accentColor());
         ambient = findViewById(R.id.ambient);
+        // Keep the existing background and add the cached app-colour glow above it.
+        boolean customWallpaper = cfg.wallpaper != null || !cfg.wallpapers.isEmpty();
+        findViewById(R.id.aurora).setVisibility(customWallpaper ? View.GONE : View.VISIBLE);
+        String backgroundMode = BingWallpaper.mode(this);
+        if (BingWallpaper.BLACK.equals(backgroundMode)) {
+            root.setBackgroundColor(Color.BLACK);
+            findViewById(R.id.aurora).setVisibility(View.GONE);
+        }
+        if (BingWallpaper.DAILY.equals(backgroundMode) || BingWallpaper.FIXED.equals(backgroundMode)) {
+            bingWallpaper = new BingWallpaperView(this);
+            root.addView(bingWallpaper, root.indexOfChild(findViewById(R.id.aurora)) + 1,
+                    new FrameLayout.LayoutParams(-1, -1));
+        }
+        boolean photoBackground = customWallpaper || bingWallpaper != null;
+        findViewById(R.id.headerScrim).setVisibility(photoBackground ? View.VISIBLE : View.GONE);
+        ambient.setVisibility(View.VISIBLE);
+        // Restrict colour-transition damage to the shelf instead of repainting the whole wallpaper.
+        FrameLayout.LayoutParams glowLayout = new FrameLayout.LayoutParams(
+                Math.round(480 * density), Math.round(240 * density), Gravity.BOTTOM | Gravity.START);
+        glowLayout.leftMargin = Math.round(48 * density);
+        glowLayout.bottomMargin = Math.round(150 * density);
+        ambient.setLayoutParams(glowLayout);
         // The glow is one bitmap, so its alpha can be applied while drawing it. Otherwise every frame of
         // a fade renders it into a full-screen offscreen buffer first.
-        ambient.forceHasOverlappingRendering(false);
+        if (Build.VERSION.SDK_INT >= 24) ambient.forceHasOverlappingRendering(false);
         heroName = findViewById(R.id.heroName);
         // dock_title false: the name above the dock never shows; the glow still follows the dock.
         if (!cfg.dockTitle) heroName.setVisibility(View.GONE);
@@ -395,35 +416,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
                 if (!glassShown) return;
                 glassTargetY -= dy;
-                glassScrollShift -= dy;
-                glass.setTranslationY(glass.getTranslationY() - dy);
+                glass.animate().cancel();
+                glass.setTranslationX(glassTargetX);
+                glass.setTranslationY(glassTargetY);
             }
         });
-
-        // Liquid feel: soft springs on the highlight's position.
-        springX = new SpringAnimation(glass, DynamicAnimation.TRANSLATION_X);
-        springY = new SpringAnimation(glass, new FloatPropertyCompat<View>("glassContentY") {
-            @Override
-            public float getValue(View v) {
-                return v.getTranslationY() - glassScrollShift;
-            }
-
-            @Override
-            public void setValue(View v, float value) {
-                v.setTranslationY(value + glassScrollShift);
-            }
-        });
-        for (SpringAnimation s : new SpringAnimation[]{springX, springY}) {
-            if (reducedMotion) {
-                // Stiff and almost critically damped: settles in a few frames instead of oscillating,
-                // and stops once the highlight is within 1.5 px of its tile.
-                s.setSpring(new SpringForce().setStiffness(1400f).setDampingRatio(0.95f));
-                s.setMinimumVisibleChange(1.5f);
-            } else {
-                s.setSpring(new SpringForce().setStiffness(advancedEffects ? 320f : 260f)
-                        .setDampingRatio(advancedEffects ? 0.76f : 0.58f));
-            }
-        }
 
         btnInputs = findViewById(R.id.btnInputs);
         View btnSettings = findViewById(R.id.btnSettings);
@@ -433,14 +430,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             open(systemIntent(Settings.ACTION_WIFI_SETTINGS));
             return true;
         });
-        btnSettings.setOnClickListener(v -> open(systemIntent(Settings.ACTION_SETTINGS)));
+        btnSettings.setOnClickListener(v -> startActivityForResult(
+                new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
         btnReorder = findViewById(R.id.btnReorder);
         btnReorder.setOnClickListener(v -> toggleReorder());
         btnReorder.setVisibility(cfg.reorderButton ? View.VISIBLE : View.GONE);
-        btnSettings.setOnLongClickListener(v -> {
-            showSettingsMenu();
-            return true;
-        });
+        btnSettings.setLongClickable(false);
+        for (View button : new View[]{btnInputs, btnWifi, btnReorder, btnSettings}) {
+            TextView pill = (TextView) button;
+            setHeaderIcon(pill, pill.getCompoundDrawablesRelative()[0]);
+        }
 
         // Keep focus on the top bar at its ends and at the top: Android's focus finder would otherwise
         // jump to a tile far below when there is nothing in that direction.
@@ -487,7 +486,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
         if (tim != null) tim.registerCallback(inputCallback, handler);
         if (cm != null) {
-            cm.registerDefaultNetworkCallback(networkCallback);
+            if (Build.VERSION.SDK_INT >= 24) {
+                cm.registerDefaultNetworkCallback(networkCallback);
+            } else {
+                cm.registerNetworkCallback(new NetworkRequest.Builder()
+                        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(), networkCallback);
+            }
             cm.registerNetworkCallback(new NetworkRequest.Builder()
                     .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
                     .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -533,6 +537,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onResume() {
         super.onResume();
+        idleClock.resume();
         // A festival that started or ended while Home was in the background: rebuild with or without it.
         if (festive != festival.active(LocalDate.now())) {
             recreate();
@@ -550,6 +555,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (showStats) startStats();
         sky.update();
         wallpaperPlayer.start();
+        if (bingWallpaper != null) bingWallpaper.start(BingWallpaper.FIXED.equals(BingWallpaper.mode(this)));
         handler.postDelayed(minuteTick, MINUTE_MS);
         if (festive && diya != null) {
             diya.start();
@@ -640,10 +646,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     protected void onPause() {
+        idleClock.pause();
         super.onPause();
         endReorder();   // Home or another app while reordering keeps the order so far
         wallpaperPlayer.stop();
-        stopAmbientAnimation();
+        if (bingWallpaper != null) bingWallpaper.stop();
         heroName.animate().cancel();
         ambient.animate().cancel();
         handler.removeCallbacks(minuteTick);
@@ -666,16 +673,24 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        if (idleClock != null) idleClock.reset();
         if (hasFocus) {
             if (libraryFocusPending && appLibrary == null) focusLibrary();
             showCardPrompt();
         }
     }
 
+    @Override public void onUserInteraction() {
+        super.onUserInteraction();
+        if (idleClock != null) idleClock.reset();
+    }
+
     @Override
     protected void onDestroy() {
+        if (idleClock != null) idleClock.pause();
         super.onDestroy();
         wallpaperPlayer.close();
+        if (bingWallpaper != null) bingWallpaper.close();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
         if (tim != null) tim.unregisterCallback(inputCallback);
@@ -717,6 +732,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (idleClock != null) idleClock.reset();
         if (handleSettingsKey(event)) return true;
         if (!reordering) return super.dispatchKeyEvent(event);
         if (dockEditing) return dispatchDockEdit(event);
@@ -1011,22 +1027,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         glassTargetX = x;
         glassTargetY = y;
+        glass.animate().cancel();
         if (!glassShown) {
-            springX.cancel();
-            springY.cancel();
             glass.setTranslationX(x);
             glass.setTranslationY(y);
             if (animations) glass.animate().alpha(1f).setDuration(reducedMotion ? 100 : 180).start();
             else glass.setAlpha(1f);
             glassShown = true;
-        } else if (!animations) {
-            springX.cancel();
-            springY.cancel();
+        } else if (!animations || reducedMotion) {
             glass.setTranslationX(x);
             glass.setTranslationY(y);
         } else {
-            springX.animateToFinalPosition(x);
-            springY.animateToFinalPosition(y - glassScrollShift);
+            glass.animate().translationX(x).translationY(y).alpha(1f)
+                    .setDuration(180).setInterpolator(new OvershootInterpolator(0.45f)).start();
         }
         View item = (View) card.getParent();
         if (dockRow && position < COLUMNS) {
@@ -1059,9 +1072,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         float y = dockTopInRoot - 14 * density - 26 * density - heroName.getHeight();
         boolean changed = !label.contentEquals(heroName.getText());
 
-        if (!animations || reducedMotion) {
-            // Snap the shelf instead of sliding and fading it: each of those frames repaints the
-            // full-screen panel, and this switch exists for the GPUs that cannot afford it.
+        if (CoocaaCompat.isSkyworth(this) || !animations || reducedMotion) {
+            // Keep title updates separate from the moving glass on this firmware.
             heroName.animate().cancel();
             ambient.animate().cancel();
             heroName.setText(label);
@@ -1081,7 +1093,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
 
         if (!heroShown) {
-            stopAmbientAnimation();
             heroName.animate().cancel();
             ambient.animate().cancel();
             heroName.setText(label);
@@ -1089,24 +1100,17 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             heroName.setTranslationX(0f);
             heroName.animate().alpha(1f).setDuration(260).start();
             setAmbient(color);
-            ambient.animate().alpha(1f).setDuration(600).start();
+            ambient.animate().alpha(1f).setDuration(240).start();
             heroShown = true;
         } else if (changed) {
-            if (advancedEffects) heroName.animate().cancel();
+            heroName.animate().cancel();
             heroName.animate().alpha(0f).translationX(-12 * density).setDuration(120).withEndAction(() -> {
                 heroName.setText(label);
                 heroName.setY(y);
                 heroName.setTranslationX(12 * density);
                 heroName.animate().alpha(1f).translationX(0f).setDuration(200).start();
             }).start();
-            if (advancedEffects) {
-                transitionAmbient(color);
-            } else if (color != ambientColor) {
-                ambient.animate().alpha(0.35f).setDuration(200).withEndAction(() -> {
-                    setAmbient(color);
-                    ambient.animate().alpha(1f).setDuration(500).start();
-                }).start();
-            }
+            transitionAmbient(color);
         } else {
             heroName.setY(y);
         }
@@ -1120,6 +1124,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      * so changing apps neither repaints it on the CPU (about 11 ms) nor uploads it again.
      */
     private void setAmbient(int color) {
+        if (ambient.getVisibility() != View.VISIBLE) return;
         if (color == ambientColor && ambient.getBackground() != null) return;
         ambientColor = color;
         BitmapDrawable glow = (BitmapDrawable) ambient.getBackground();
@@ -1129,40 +1134,35 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(bmp);
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            float radius = h * 0.48f;
             paint.setShader(new RadialGradient(
-                    w * 0.32f, h * 0.42f, w * 0.62f,
-                    new int[]{0x5CFFFFFF, 0x26FFFFFF, 0x00FFFFFF},
+                    w * 0.5f, h * 0.5f, radius,
+                    new int[]{0x38FFFFFF, 0x18FFFFFF, 0x00FFFFFF},
                     new float[]{0f, 0.45f, 1f},
                     Shader.TileMode.CLAMP));
-            canvas.drawRect(0, 0, w, h, paint);
+            // Fully transparent edges keep the bounded texture from looking like a tinted rectangle.
+            canvas.save();
+            canvas.scale(w / (float) h, 1f, w * 0.5f, h * 0.5f);
+            canvas.drawCircle(w * 0.5f, h * 0.5f, radius, paint);
+            canvas.restore();
             glow = new BitmapDrawable(getResources(), bmp);
             glow.setGravity(Gravity.FILL);
             ambient.setBackground(glow);
         }
         // The default tint mode, SRC_IN, keeps the mask's alpha and takes the colour from the tint.
-        glow.setTint(0xFF000000 | color);
+        ((AmbientGlowView) ambient).setColor(color);
     }
 
     private void transitionAmbient(int color) {
         // A rapid focus change continues from the colour actually displayed on screen.
-        stopAmbientAnimation();
         ambient.animate().cancel();
         if (color == ambientColor) {
             ambient.animate().alpha(1f).setDuration(180).start();
             return;
         }
         ambient.animate().alpha(1f).setDuration(180).start();
-        ambientAnimator = ValueAnimator.ofObject(new ArgbEvaluator(), ambientColor, color);
-        ambientAnimator.setDuration(360);
-        ambientAnimator.addUpdateListener(animation -> setAmbient((int) animation.getAnimatedValue()));
-        ambientAnimator.start();
-    }
-
-    private void stopAmbientAnimation() {
-        if (ambientAnimator != null) {
-            ambientAnimator.cancel();
-            ambientAnimator = null;
-        }
+        // Tint the cached texture once; leave the short opacity transition to RenderThread.
+        setAmbient(color);
     }
 
     /**
@@ -1171,7 +1171,6 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
      */
     private void showGlowOnly(int position) {
         int color = adapter.ambientColorAt(position);
-        stopAmbientAnimation();
         heroName.animate().cancel();
         ambient.animate().cancel();
         heroName.setAlpha(0f);
@@ -1181,20 +1180,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             ambient.setAlpha(1f);
             return;
         }
-        if (color == ambientColor && ambient.getBackground() != null) {
-            ambient.animate().alpha(1f).setDuration(300).start();
-            return;
-        }
-        // The same dip-and-swap as the dock's top shelf.
-        ambient.animate().alpha(0.35f).setDuration(ambient.getAlpha() > 0.35f ? 200 : 0).withEndAction(() -> {
-            setAmbient(color);
-            ambient.animate().alpha(1f).setDuration(500).start();
-        }).start();
+        transitionAmbient(color);
     }
 
     private void hideHero() {
         if (!heroShown) return;
-        stopAmbientAnimation();
         heroName.animate().cancel();
         ambient.animate().cancel();
         heroShown = false;
@@ -1616,12 +1606,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         } else {
             btnWifi.setText(text);
         }
+        // Keep network status accessible without restoring visible text on refresh.
+        btnWifi.setContentDescription(btnWifi.getText());
+        btnWifi.setText(null);
         if (festive && diya != null) {
             if (online && flame == 0) flame = 3;   // online some other way (cellular, USB tethering)
             diya.setSteady(steady);
             diya.setFlame(flame);
         } else {
-            btnWifi.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0);
+            setHeaderIcon(btnWifi, getDrawable(icon));
         }
     }
 
@@ -1648,7 +1641,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private static void setFestiveIcon(TextView pill, Drawable icon) {
         // The pills tint their icons to follow focus; the festive ones keep their own colours.
         pill.setCompoundDrawableTintList(null);
-        pill.setCompoundDrawablesRelativeWithIntrinsicBounds(icon, null, null, null);
+        setHeaderIcon(pill, icon);
+    }
+
+    private static void setHeaderIcon(TextView pill, Drawable icon) {
+        if (icon != null) {
+            int size = Math.round(22f * pill.getResources().getDisplayMetrics().density);
+            icon.setBounds(0, 0, size, size);
+        }
+        pill.setCompoundDrawablesRelative(icon, null, null, null);
     }
 
     /** Runs {@code action} when the view gains focus, keeping any focus listener it already had. */
@@ -1700,12 +1701,16 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** Hides the Inputs pill when it would have nothing to list: streaming boxes have no HDMI-in, AV or tuner. */
     private void updateInputsButton() {
+        if (CoocaaCompat.isSkyworth(this)) {
+            btnInputs.setVisibility(View.VISIBLE);
+            return;
+        }
         boolean any = liveTvIntent() != null || !sourcePanelService.isEmpty();
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
         if (!any && tim != null) {
             for (TvInputInfo info : tim.getTvInputList()) {
                 // Inputs hidden in Settings > Inputs are left out of the menu, so they don't count here either.
-                if (info.isPassthroughInput() && !info.isHidden(this)) {
+                if (info.isPassthroughInput() && (Build.VERSION.SDK_INT < 24 || !info.isHidden(this))) {
                     any = true;
                     break;
                 }
@@ -1765,6 +1770,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     /** Dropdown menu under the Inputs pill: HDMI ports (with connection state), AV and Live TV. */
     private void showInputs() {
+        if (CoocaaCompat.isSkyworth(this)) {
+            CoocaaCompat.openInputs(this);
+            return;
+        }
         View anchor = findViewById(R.id.btnInputs);
         View panel = getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
         LinearLayout rows = panel.findViewById(R.id.rows);
@@ -1817,13 +1826,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     }
                 }
                 // Inputs hidden in the TV's Settings > Inputs stay out of the menu too.
-                if (!info.isPassthroughInput() || info.isHidden(this)) continue;
+                if (!info.isPassthroughInput() || (Build.VERSION.SDK_INT >= 24 && info.isHidden(this))) continue;
                 CharSequence l = info.loadLabel(this);
                 String label = l == null ? info.getId() : l.toString();
                 boolean hdmi = info.getType() == TvInputInfo.TYPE_HDMI;
                 if (hdmi && !label.toUpperCase(Locale.ROOT).contains("HDMI")) label = "HDMI " + label;
                 // The name given in Settings > Inputs (e.g. "MacBook Pro") goes first, the port after it.
-                CharSequence custom = info.loadCustomLabel(this);
+                CharSequence custom = Build.VERSION.SDK_INT >= 24 ? info.loadCustomLabel(this) : null;
                 if (custom != null && custom.length() > 0 && !custom.toString().equals(label)) {
                     label = custom + " \u00B7 " + label;
                 }
@@ -1939,6 +1948,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         PopupWindow popup = glassPopup(panel, (int) (200 * density));
         addSettingsMenuRow(rows, popup, R.string.launcher_settings, () -> startActivityForResult(
                 new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+        addSettingsMenuRow(rows, popup, R.string.background_settings, () -> startActivityForResult(
+                new Intent(this, BackgroundSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
         if (moduleCards) addSettingsMenuRow(rows, popup, R.string.module_cards, this::showModuleCards);
         if (dockRow) addSettingsMenuRow(rows, popup, R.string.dock_edit, this::startDockEdit);
         addSettingsMenuRow(rows, popup, R.string.reorder, this::toggleReorder);

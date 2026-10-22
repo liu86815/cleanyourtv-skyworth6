@@ -5,6 +5,12 @@
     android:layout_height="match_parent"
     android:background="#FF000000">
 
+    <com.gathin.tvhome.AuroraView
+        android:id="@+id/aurora"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no" />
+
     <!-- Time-of-day backdrop, drawn once a minute (config.xml sky_intensity; 0 keeps it hidden). -->
     <com.gathin.tvhome.SkyView
         android:id="@+id/sky"
@@ -13,11 +19,20 @@
         android:importantForAccessibility="no" />
 
     <!-- Ambient glow in the colour of the focused dock app. -->
-    <View
+    <com.gathin.tvhome.AmbientGlowView
         android:id="@+id/ambient"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:alpha="0" />
+
+    <!-- Keeps the clock and top controls readable over snow, clouds and other bright photographs. -->
+    <View
+        android:id="@+id/headerScrim"
+        android:layout_width="match_parent"
+        android:layout_height="220dp"
+        android:background="@drawable/header_scrim"
+        android:importantForAccessibility="no"
+        android:visibility="gone" />
 
     <!-- Top shelf: the focused dock app's name, positioned above the dock in code. -->
     <TextView
@@ -195,32 +210,32 @@
 
                 <TextView
                     android:id="@+id/btnInputs"
-                    style="@style/TopButton"
-                    android:text="@string/inputs"
+                    style="@style/HeaderButton"
+                    android:contentDescription="@string/inputs"
                     android:drawableStart="@drawable/ic_input"
                     android:nextFocusDown="@+id/grid" />
 
                 <TextView
                     android:id="@+id/btnWifi"
-                    style="@style/TopButton"
+                    style="@style/HeaderButton"
                     android:maxWidth="180dp"
                     android:singleLine="true"
                     android:ellipsize="end"
-                    android:text="@string/wifi"
+                    android:contentDescription="@string/wifi"
                     android:drawableStart="@drawable/ic_wifi"
                     android:nextFocusDown="@+id/grid" />
 
                 <TextView
                     android:id="@+id/btnReorder"
-                    style="@style/TopButtonIcon"
+                    style="@style/HeaderButtonIcon"
                     android:contentDescription="@string/reorder"
                     android:drawableStart="@drawable/ic_swap_vert"
                     android:nextFocusDown="@+id/grid" />
 
                 <TextView
                     android:id="@+id/btnSettings"
-                    style="@style/TopButton"
-                    android:text="@string/settings"
+                    style="@style/HeaderButton"
+                    android:contentDescription="@string/launcher_settings"
                     android:drawableStart="@drawable/ic_settings"
                     android:nextFocusDown="@+id/grid" />
             </LinearLayout>
